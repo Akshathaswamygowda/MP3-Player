@@ -17,6 +17,7 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Image;
 import java.awt.Point;
+import java.awt.Rectangle;
 import javax.swing.JOptionPane;
 import java.awt.dnd.DropTarget;
 import java.awt.event.ActionEvent;
@@ -28,24 +29,38 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
+import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import static java.lang.Math.random;
+import static java.lang.System.out;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.channels.Selector;
 import java.sql.Connection;
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.TimeZone;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.imageio.ImageIO;
+import javax.sound.sampled.AudioFileFormat;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.UnsupportedAudioFileException;
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
@@ -63,6 +78,14 @@ import javax.swing.tree.TreeSelectionModel;
 import javazoom.jlgui.basicplayer.BasicPlayer;
 import javazoom.jlgui.basicplayer.BasicPlayerException;
 import org.xml.sax.SAXException;
+import javax.swing.Timer;
+import javax.swing.table.JTableHeader;
+import javax.swing.table.TableModel;
+import javazoom.jlgui.basicplayer.BasicController;
+import javazoom.jlgui.basicplayer.BasicPlayerEvent;
+import javazoom.jlgui.basicplayer.BasicPlayerListener;
+import javazoom.spi.mpeg.sampled.file.MpegAudioFileReader;
+import org.tritonus.share.sampled.file.TAudioFileFormat;
 
 
 /**
@@ -77,6 +100,7 @@ public class GUI {
     JPanel jPanel2;
     JPanel jPanel3;
     JMenu jMenu;
+    JMenu jMenu2;
     JButton play;
     JButton pause;
     JButton resume;
@@ -97,9 +121,37 @@ public class GUI {
     JMenuItem openpl;
     JMenuItem delpl;
     JMenuItem jm;
+    
+    JMenuItem mplay;
+    JMenuItem mnext;
+    JMenuItem mprevious;
+    JMenuItem mcs;
+    
+    JMenuItem incvol;
+    JMenuItem decvol;
+    
+    JCheckBoxMenuItem shuffle;
+    JCheckBoxMenuItem repeat;
+    
+    long duration;
+    long lmp3;
+    //JMenuItem mplay;
+    //JMenuItem mplay;
+    
+    Timer timer;
+    JProgressBar jbar;
+    Timer timer2;
+    
+    String mc = null;
+    static BasicPlayerListener bplListener;
+    static BasicPlayer player1;
+    String cursong;
+    
     JMenu addpl;
     JPopupMenu jPopup;
     JPopupMenu jPopup2;
+    
+    JPopupMenu popupMenu;
     JLabel jLabel;
     JLabel jLabel3;
     JFileChooser chooser;
@@ -111,6 +163,8 @@ public class GUI {
     ButtonListener b4;
     ButtonListener b5;
     ButtonListener b6;
+    
+    BasicPlayerListener bpl;
     BasicPlayer player;
     int CurrentSelectedRow;
     String url;
@@ -130,6 +184,24 @@ public class GUI {
     float aud = (float) 0.85;
     String playli;
     Boolean set = false;
+    Boolean shuf = false;
+    Boolean rep = false;
+    Object k = null;
+    int playing = 0;
+    JMenu recent;
+    JLabel timer1;
+    JLabel timer12;
+    Long byteDuration;
+    
+    Boolean cAlbum = false;
+    Boolean cArtist = false;
+    Boolean cYear = false; 
+    Boolean cGenre= false;
+    Boolean cComment = false;
+    
+    String spl;
+    
+    int svst;
     
     public GUI() throws IOException, SQLException {
         player = new BasicPlayer() ;
@@ -145,9 +217,12 @@ public class GUI {
         jPanel1 = new JPanel();
         jPanel2 = new JPanel();
         jPanel3 = new JPanel();
+        
+        
 
         jTable2 = new JTable();
         jMenu = new JMenu("Options");
+        jMenu2 = new JMenu("Controls");
         
         m1 = new Key();
         m2 = new Key();
@@ -155,7 +230,8 @@ public class GUI {
        /* add.addActionListener((ActionListener) m1);
         delete.addActionListener((ActionListener) m2);*/
         
-        
+        bpl = new BasicPlayerTest();
+                
         b1 = new ButtonListener();
         b2 = new ButtonListener();
         b3 = new ButtonListener();
@@ -173,13 +249,49 @@ public class GUI {
         previous = new JButton("Previous");
         next = new JButton("Next");
         jTable = new JTable();
-        jTable.setDefaultEditor(Object.class, null);
+        
+        jTable.setModel(new DefaultTableModel(
+            
+            new Object [] {
+                "Title", "Album", "Artist", "Year", "Genre", "Comment", "Path"
+            },7
+        ));
+        jTable.setDefaultEditor(Object.class,null);
+        
+         popupMenu = new JPopupMenu();
+         JCheckBoxMenuItem Album = new JCheckBoxMenuItem("Album",true);
+         Album.addActionListener(new dishead());
+         popupMenu.add(Album);
+         
+         JCheckBoxMenuItem Artist = new JCheckBoxMenuItem("Artist",true);
+         Artist.addActionListener(new dishead());
+         popupMenu.add(Artist);
+         
+         JCheckBoxMenuItem Comment = new JCheckBoxMenuItem("Comment",true);
+         Comment.addActionListener(new dishead());
+         popupMenu.add(Comment);
+         
+         JCheckBoxMenuItem Year = new JCheckBoxMenuItem("Year",true);
+         Year.addActionListener(new dishead());
+         popupMenu.add(Year);
+         
+         JCheckBoxMenuItem Genre = new JCheckBoxMenuItem("Genre",true);
+         Genre.addActionListener(new dishead());
+         popupMenu.add(Genre);
+        
+        jTable.getTableHeader().addMouseListener(new MouseAdapter() {
+         public void mouseClicked(MouseEvent me) {
+            if (SwingUtilities.isRightMouseButton(me))
+               popupMenu.show(jTable.getTableHeader(), me.getX(), me.getY());
+         }
+      });
         jmb = new JMenuBar();
         //pause.setEnabled(false);
         
         c = false;
         
         jmb.add(jMenu);
+        jmb.add(jMenu2);
         jMenu.setMnemonic(KeyEvent.VK_A);
         jMenu.getAccessibleContext().setAccessibleDescription("Add,Remove");
         
@@ -189,7 +301,14 @@ public class GUI {
         jMenu.add(add);
         
      
+        javax.swing.KeyStroke left = javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_LEFT, java.awt.event.InputEvent.CTRL_MASK);
+        jTable.getInputMap(javax.swing.JTable.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(left, "none");
         
+        javax.swing.KeyStroke right = javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_RIGHT, java.awt.event.InputEvent.CTRL_MASK);
+        jTable.getInputMap(javax.swing.JTable.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(right, "none");
+        
+        javax.swing.KeyStroke space = javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_SPACE, 0);
+        jTable.getInputMap(javax.swing.JTable.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(space, "none");
         
         
         
@@ -223,6 +342,55 @@ public class GUI {
         delpl.addActionListener(new Options());
         delpl.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_2, ActionEvent.ALT_MASK));
         
+        mplay = new JMenuItem("Play",KeyEvent.VK_T); 
+        mplay.addActionListener(new Options());
+        mplay.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0));
+        jMenu2.add(mplay);
+        
+        mnext = new JMenuItem("Next",KeyEvent.VK_T); 
+        mnext.addActionListener(new Options());
+        mnext.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, ActionEvent.CTRL_MASK));
+        jMenu2.add(mnext);
+        
+        mprevious = new JMenuItem("Previous",KeyEvent.VK_T); 
+        mprevious.addActionListener(new Options());
+        mprevious.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, ActionEvent.CTRL_MASK));
+        jMenu2.add(mprevious);
+        
+        mcs = new JMenuItem("Go To Current Song",KeyEvent.VK_T); 
+        mcs.addActionListener(new Options());
+        mcs.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_L, ActionEvent.CTRL_MASK));
+        jMenu2.add(mcs);
+        
+        recent = new JMenu("Recently Added");
+        jMenu2.add(recent);
+        createRecent();
+        
+        
+        
+        jMenu2.addSeparator();
+        
+        incvol = new JMenuItem("Increase Volume",KeyEvent.VK_T); 
+        incvol.addActionListener(new Options());
+        incvol.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, ActionEvent.CTRL_MASK));
+        jMenu2.add(incvol);
+        
+        decvol = new JMenuItem("Decrease Volume",KeyEvent.VK_T); 
+        decvol.addActionListener(new Options());
+        decvol.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, ActionEvent.CTRL_MASK));
+        jMenu2.add(decvol);
+        
+        
+        jMenu2.addSeparator();
+        
+        shuffle = new JCheckBoxMenuItem("Shuffle");
+        shuffle.addActionListener(new Options());
+        jMenu2.add(shuffle);
+        
+        repeat = new JCheckBoxMenuItem("Repeat");
+        repeat.addActionListener(new Options());
+        jMenu2.add(repeat);
+        
         
         exit = new JMenuItem("Exit");
         exit.addActionListener(new exitApp());
@@ -233,6 +401,8 @@ public class GUI {
         
         addpl = new JMenu("Add to Playlist"); 
         addpl.addActionListener(new Options());
+        
+        
         
         jMenu.add(pl);
         jMenu.add(delete1);
@@ -396,12 +566,14 @@ public class GUI {
        
         
         
+         jTable.removeColumn(jTable.getColumnModel().getColumn(6));
 
         DefaultMutableTreeNode lib =  new DefaultMutableTreeNode("Library");
         
         
         playlists =  new DefaultMutableTreeNode("Playlists");
         createNodes();
+        
         
         dmn = new DefaultMutableTreeNode();
         dmn.add(lib);
@@ -457,12 +629,15 @@ public class GUI {
         jTree2.addMouseListener(m2);
         
         scrollPane = new JScrollPane(jTable);
+        //tableCheck();
         //assign the listener
         jTable.addMouseListener(mouseListener);
         
         
         
         jTable.setDragEnabled(true);
+        jTable.setAutoCreateRowSorter(true);
+
         jTable.setDropMode(DropMode.INSERT_ROWS);
         
         slider = new JSlider();
@@ -492,7 +667,6 @@ public class GUI {
         
         scrollPane2 = new JScrollPane(jPanel3);
         
-        scrollPane2.setSize(sizex/8,sizey);
         //scrollPane2.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
         
 
@@ -511,7 +685,18 @@ public class GUI {
         Container contentPane=jFrame.getContentPane();   
         contentPane.setLayout(new BorderLayout());
         jFrame.setJMenuBar(jmb);
-        contentPane.add(new JScrollPane(jTable), BorderLayout.CENTER);
+        JPanel jp23 = new JPanel();
+        jbar = new JProgressBar();
+        
+        
+        timer1 = new JLabel("00:00:00");
+        timer12 = new JLabel("00:00:00");
+        jp23.add(timer1);
+        jp23.add(jbar);
+        jp23.add(timer12);
+        contentPane.add(jp23, BorderLayout.NORTH);
+        
+        contentPane.add(scrollPane, BorderLayout.CENTER);
         contentPane.add(scrollPane2, BorderLayout.WEST);
         //contentPane.add(jPanel3, BorderLayout.WEST);
         contentPane.add(jPanel2, BorderLayout.SOUTH);
@@ -570,6 +755,38 @@ public class GUI {
     
     
 }
+         
+         public void createRecent()
+         {
+             
+        try {
+            
+            
+            
+            Connection con = DatabaseConnect.getConnection();   
+            Statement st = null;
+            ResultSet rs = null;
+            st = con.createStatement();
+            String qr = "Select name from recent";
+            rs = st.executeQuery(qr);
+            
+            int c = 0;
+            while(rs.next()){
+                if(c<10){
+                JMenuItem jm1 = new JMenuItem(rs.getString("name"),KeyEvent.VK_T);
+                jm1.addActionListener(new Options2());
+                //jm.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_1, ActionEvent.ALT_MASK));
+                recent.add(jm1);
+                c++;
+                }   
+            }
+        } catch (SQLException ex) {
+            Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+        }
+         }
+         
+         
+         
          public void createNodes2() throws SQLException {
             playlists.removeAllChildren();
             Connection con = DatabaseConnect.getConnection();
@@ -632,14 +849,7 @@ public class GUI {
          System.out.println("Arey Enti ra");
          
                  
-        jTable.setModel(new DefaultTableModel(
-            new Object [][] {
-
-            },
-            new String [] {
-                "Title", "Album", "Artist", "Year", "Genre", "Comment", "Path"
-            }
-        ));
+       
          
          
          ArrayList<DisplayAlbum> list = callDisplayAlbum();
@@ -671,14 +881,7 @@ public class GUI {
          
          public void showAlbum2(){
              
-        jTable.setModel(new DefaultTableModel(
-            new Object [][] {
-
-            },
-            new String [] {
-                "Title", "Album", "Artist", "Year", "Genre", "Comment", "Path"
-            }
-        ));
+        
          
          
          ArrayList<DisplayAlbum> list = new ArrayList<>();
@@ -735,14 +938,7 @@ public class GUI {
          
          public void showAlbum22(){
              
-        jTable.setModel(new DefaultTableModel(
-            new Object [][] {
-
-            },
-            new String [] {
-                "Title", "Album", "Artist", "Year", "Genre", "Comment", "Path"
-            }
-        ));
+       
          
          
          ArrayList<DisplayAlbum> list = new ArrayList<>();
@@ -805,14 +1001,7 @@ public class GUI {
               
               
              
-        jTable2.setModel(new DefaultTableModel(
-            new Object [][] {
-
-            },
-            new String [] {
-                "Title", "Album", "Artist", "Year", "Genre", "Comment", "Path"
-            }
-        ));
+        
          
          
          ArrayList<DisplayAlbum> list = new ArrayList<>();
@@ -869,7 +1058,21 @@ public class GUI {
 
          
          jTable2.changeSelection(0,0,false,false);
+         
+        
+         
+      
+         
+         
+         
+         
+         
+         
+          
+                 
          }
+          
+          
          
          public class Selector implements TreeSelectionListener {
                 public void valueChanged(TreeSelectionEvent event) { 
@@ -897,7 +1100,138 @@ public class GUI {
             }
                 
                 }   
+                
+                
+                
+                 
+      
         }
+         
+         
+         class dishead implements ActionListener{
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            
+            JTable jhg = new JTable();
+            jhg = jTable;
+            int sizea = (scrollPane.getWidth())/6;
+            Connection con;
+            
+           String upcheck = null;
+                  
+               
+            
+            if("Album".equals(e.getActionCommand())){
+                       AbstractButton aButton = (AbstractButton)e.getSource();
+                        boolean selected = aButton.getModel().isSelected();
+                        
+                        if(!selected){
+                            
+                             jTable.getColumnModel().getColumn(1).setMinWidth(0);
+                             jTable.getColumnModel().getColumn(1).setMaxWidth(0);
+                             upcheck = "update table1 set Album = \"false\"";
+
+                        }
+                        if(selected){
+                            jTable.getColumnModel().getColumn(1).setMaxWidth(sizea);
+                            jTable.getColumnModel().getColumn(1).setMinWidth(sizea);
+                            upcheck = "update table1 set Album = \"true\"";
+                        }
+                        
+                   }
+            if("Artist".equals(e.getActionCommand())){
+                       AbstractButton aButton = (AbstractButton)e.getSource();
+                        boolean selected = aButton.getModel().isSelected();
+                        
+                        if(!selected){
+                            
+                             jTable.getColumnModel().getColumn(2).setMinWidth(0);
+                             jTable.getColumnModel().getColumn(2).setMaxWidth(0);
+                             upcheck = "update table1 set Artist = \"false\"";
+
+                        }
+                        if(selected){
+                            jTable.getColumnModel().getColumn(2).setMaxWidth(sizea);
+                            jTable.getColumnModel().getColumn(2).setMinWidth(sizea);
+                            upcheck = "update table1 set Artist = \"true\"";
+                        }
+                        
+                   }
+            if("Year".equals(e.getActionCommand())){
+                       AbstractButton aButton = (AbstractButton)e.getSource();
+                        boolean selected = aButton.getModel().isSelected();
+                        
+                        if(!selected){
+                            
+                             jTable.getColumnModel().getColumn(3).setMinWidth(0);
+                             jTable.getColumnModel().getColumn(3).setMaxWidth(0);
+                             upcheck = "update table1 set Year = \"false\"";
+
+                        }
+                        if(selected){
+                            jTable.getColumnModel().getColumn(3).setMaxWidth(sizea);
+                            jTable.getColumnModel().getColumn(3).setMinWidth(sizea);
+                            upcheck = "update table1 set Year = \"true\"";
+                        }
+                        
+                   }
+            if("Genre".equals(e.getActionCommand())){
+                       AbstractButton aButton = (AbstractButton)e.getSource();
+                        boolean selected = aButton.getModel().isSelected();
+                        
+                        if(!selected){
+                            
+                             jTable.getColumnModel().getColumn(4).setMinWidth(0);
+                             jTable.getColumnModel().getColumn(4).setMaxWidth(0);
+                             upcheck = "update table1 set Genre = \"false\"";
+
+                        }
+                        if(selected){
+                            jTable.getColumnModel().getColumn(2).setMaxWidth(sizea);
+                            jTable.getColumnModel().getColumn(2).setMinWidth(sizea);
+                            upcheck = "update table1 set Genre = \"true\"";
+                        }
+                        
+                   }
+            if("Comment".equals(e.getActionCommand())){
+                       AbstractButton aButton = (AbstractButton)e.getSource();
+                        boolean selected = aButton.getModel().isSelected();
+                        
+                        if(!selected){
+                            
+                             jTable.getColumnModel().getColumn(5).setMinWidth(0);
+                             jTable.getColumnModel().getColumn(5).setMaxWidth(0);
+                             upcheck = "update table1 set Comment = \"false\"";
+
+                        }
+                        if(selected){
+                            jTable.getColumnModel().getColumn(5).setMaxWidth(sizea);
+                            jTable.getColumnModel().getColumn(5).setMinWidth(sizea);
+                            upcheck = "update table1 set Comment = \"true\"";
+                        }
+                        
+                   }
+            
+            con=null;
+                            PreparedStatement ps=null;
+                            con=DatabaseConnect.getConnection();
+                            try {
+                                
+                                ps=con.prepareStatement(upcheck);
+                                ps.executeUpdate();
+                                
+                                
+                                
+                            } catch (SQLException ex) {
+                                Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+            
+        }
+             
+         }
+         
+         
          
          
           class Options implements ActionListener{
@@ -1051,6 +1385,300 @@ public class GUI {
                            
        }
                     
+                    if("Play".equals(e.getActionCommand())){
+                
+                pause.setText("Pause");
+                 System.out.println(CurrentSelectedRow);
+                
+                System.out.println(CurrentSelectedRow);
+                System.out.println("Playing");
+                try {
+                    CurrentSelectedRow =jTable.getSelectedRow();
+                    url = jTable.getModel().getValueAt(CurrentSelectedRow, 6).toString();
+                    System.out.println(CurrentSelectedRow);
+                    a = new File(url).toURI().toURL();
+                    
+                } catch (MalformedURLException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+ 
+             try {
+                svst = CurrentSelectedRow;
+                player.open(a);
+                player.play();
+                
+                
+                
+                
+                String sa = "Now Playing : " + jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString();
+                jLabel.setText(sa);
+                
+                Mp3File mp3file = new Mp3File(url);
+                if (mp3file.hasId3v2Tag()) {
+                       ID3v2 id3v2Tag = mp3file.getId3v2Tag();
+                       byte[] img = id3v2Tag.getAlbumImage();
+                       if (img == null) {
+                              ImageIcon icon = new ImageIcon("C:\\Users\\karth\\Documents\\NetBeansProjects\\ProjectMp30\\img\\empty.png"); 
+                                jLabel3.setSize(100,100);
+                                jLabel3.setIcon(icon);
+                        }
+                       else{
+                       BufferedImage image = ImageIO.read(new ByteArrayInputStream(img)); 
+                       jLabel3.setSize(100,100);
+                       Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
+                       ImageIcon icon = new ImageIcon(dimg);
+                       jLabel3.setIcon(icon);
+                       lmp3 = mp3file.getLengthInSeconds();
+                       }
+                        if(!shuf){
+                    //recent = new JMenu("Recently Played");
+                Connection con=null;
+                            PreparedStatement ps=null;
+                            con=DatabaseConnect.getConnection();
+                            try {
+                                
+                                ps=con.prepareStatement ("insert into recent (name,path) values (?,?)");
+                                ps.setString(1,jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                ps.setString(2,url);
+                                ps.executeUpdate();
+                                
+                                recent.add(jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                
+                            } catch (SQLException ex) {
+                                Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                           
+                //createRecent();
+                }
+                
+                
+            }
+                
+            }   catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (IOException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (UnsupportedTagException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (InvalidDataException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+            }
+                    
+                    if("Next".equals(e.getActionCommand())){
+                 pause.setText("Pause");
+                System.out.println("Next");
+                CurrentSelectedRow = CurrentSelectedRow+1;
+                if(CurrentSelectedRow==jTable.getRowCount()){
+                    CurrentSelectedRow = 0;
+                    
+                }
+                
+                jTable.changeSelection(CurrentSelectedRow,0,false,false);
+                url = jTable.getModel().getValueAt(CurrentSelectedRow, 6).toString();
+                System.out.println(CurrentSelectedRow);
+                try {
+                    a = new File(url).toURI().toURL();
+                } catch (MalformedURLException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                
+                
+                try {
+                player.open(a);
+                player.play();
+                String sa = "Now Playing : " + jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString();
+                    jLabel.setText(sa);
+                    
+                    Mp3File mp3file = new Mp3File(url);
+                if (mp3file.hasId3v2Tag()) {
+                       ID3v2 id3v2Tag = mp3file.getId3v2Tag();
+                       byte[] img = id3v2Tag.getAlbumImage();
+                       if (img == null) {
+                              ImageIcon icon = new ImageIcon("C:\\Users\\karth\\Documents\\NetBeansProjects\\ProjectMp30\\img\\empty.png"); 
+                                jLabel3.setSize(100,100);
+                                jLabel3.setIcon(icon);
+                        }
+                       else{
+                       BufferedImage image = ImageIO.read(new ByteArrayInputStream(img)); 
+                       jLabel3.setSize(100,100);
+                       Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
+                       ImageIcon icon = new ImageIcon(dimg);
+                       jLabel3.setIcon(icon);
+                       }
+                       lmp3 = mp3file.getLengthInSeconds();
+                        
+                
+                
+            }
+                System.out.println("Next playing");
+            }   catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {   
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (IOException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (UnsupportedTagException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (InvalidDataException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }   
+            }
+             
+             if("Previous".equals(e.getActionCommand())){
+                 pause.setText("Pause");
+                System.out.println("Previous entered");
+                CurrentSelectedRow = CurrentSelectedRow-1;
+                if(CurrentSelectedRow== -1){
+                    CurrentSelectedRow = jTable.getRowCount() - 1;
+                    
+                }
+                jTable.changeSelection(CurrentSelectedRow,0,false,false);
+                url = jTable.getModel().getValueAt(CurrentSelectedRow, 6).toString();
+                System.out.println(CurrentSelectedRow);
+                try {
+                    a = new File(url).toURI().toURL();
+                } catch (MalformedURLException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                
+                
+                try {
+                    player.open(a);
+                    String sa = "Now Playing : " + jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString();
+                    jLabel.setText(sa);
+                    Mp3File mp3file = new Mp3File(url);
+                if (mp3file.hasId3v2Tag()) {
+                       ID3v2 id3v2Tag = mp3file.getId3v2Tag();
+                       byte[] img = id3v2Tag.getAlbumImage();
+                       if (img == null) {
+                             ImageIcon icon = new ImageIcon("C:\\Users\\karth\\Documents\\NetBeansProjects\\ProjectMp30\\img\\empty.png"); 
+                                jLabel3.setSize(100,100);
+                                jLabel3.setIcon(icon);
+                        }
+                       else{
+                       BufferedImage image = ImageIO.read(new ByteArrayInputStream(img)); 
+                       jLabel3.setSize(100,100);
+                       Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
+                       ImageIcon icon = new ImageIcon(dimg);
+                       jLabel3.setIcon(icon);
+                       }
+                        if(!shuf){
+                 Connection con=null;
+                            PreparedStatement ps=null;
+                            con=DatabaseConnect.getConnection();
+                            try {
+                                
+                                ps=con.prepareStatement ("insert into recent (name,path) values (?,?)");
+                                ps.setString(1,jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                ps.setString(2,url);
+                                ps.executeUpdate();
+                                
+                                recent.add(jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                
+                            } catch (SQLException ex) {
+                                Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                           
+                //createRecent();
+                }
+                
+                
+            }
+                } catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (IOException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (UnsupportedTagException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (InvalidDataException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                try {
+                    player.play();
+                } catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                System.out.println("Previous playing");
+            }
+             
+             if("Increase Volume".equals(e.getActionCommand())){
+                      
+                       try {
+                           int value = slider.getValue();
+                           value = value + 10;
+                           slider.setValue(value);
+                           Float aud1 = (float)value/100;
+                           player.setGain(aud1);
+                       } catch (BasicPlayerException ex) {
+                           Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                       }
+                   }
+             
+             if("Decrease Volume".equals(e.getActionCommand())){
+                      
+                       try {
+                           int value = slider.getValue();
+                           value = value - 10;
+                           slider.setValue(value);
+                           Float aud1 = (float)value/100;
+                           player.setGain(aud1);
+                       } catch (BasicPlayerException ex) {
+                           Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                       }
+                   }
+             
+            
+             
+             
+             if("Shuffle".equals(e.getActionCommand())){
+                       AbstractButton aButton = (AbstractButton)e.getSource();
+                        shuf = aButton.getModel().isSelected();
+                        
+                        if(shuf){
+                            System.out.println("Selected");
+                        }
+                        else
+                        System.out.println("Not Selected");
+                       
+                        int value = slider.getValue();
+                     
+                   }
+             
+             
+                    
+             if("Repeat".equals(e.getActionCommand())){
+                       AbstractButton aButton = (AbstractButton)e.getSource();
+                        rep = aButton.getModel().isSelected();
+                        
+                        if(rep){
+                            System.out.println("Selected");
+                        }
+                        else
+                        System.out.println("Not Selected");
+                       
+                     
+                   }
+             
+             if("Go To Current Song".equals(e.getActionCommand())){
+                 
+                JViewport viewport = (JViewport)jTable.getParent();
+
+                // This rectangle is relative to the table where the
+                // northwest corner of cell (0,0) is always (0,0).
+                Rectangle rect = jTable.getCellRect(svst, 0, true);
+
+                // The location of the viewport relative to the table
+                Point pt = viewport.getViewPosition();
+
+                // Translate the cell location so that it is relative
+                // to the view, assuming the northwest corner of the
+                // view is (0,0)
+                rect.setLocation(rect.x-pt.x, rect.y-pt.y);
+
+                jTable.scrollRectToVisible(rect);
+                 jTable.changeSelection(svst,0,false,false);
+                 
+                    
+                   }
                     try {
             player.setGain(aud);
         } catch (BasicPlayerException ex) {
@@ -1063,6 +1691,333 @@ public class GUI {
                 
                 
           }
+          
+          
+          int getRowByValue(TableModel model, String value) {
+            for (int i = model.getRowCount() - 1; i >= 0; --i) {
+                for (int j = model.getColumnCount() - 1; j >= 0; --j) {
+                    if (model.getValueAt(i, j).equals(value)) {
+                // what if value is not unique?
+                        return i;
+                    }
+                }
+            }
+        return -1;
+        }
+          
+          public void tableCheck(){
+              
+        try {   
+            Connection con = DatabaseConnect.getConnection();
+            Statement st = null;
+            ResultSet rs = null;
+            st = con.createStatement();
+            String qr = "Select * from table1 ";
+            rs = st.executeQuery(qr);
+            String cal = null;
+            String car = null;
+            String cy = null;
+            String cg = null;
+            String cc = null;
+            while(rs.next()){
+                cal = rs.getString("Album");
+                car = rs.getString("Artist");
+                cy = rs.getString("Year");
+                cg = rs.getString("Genre");
+                cc = rs.getString("Comment");
+            }
+            System.out.println(cal);
+            System.out.println(car);
+            System.out.println(cy);
+            System.out.println(cg);
+            System.out.println(cc);
+            if(cal.equals("true"))
+                cAlbum = true;
+           
+            
+            if(car.equals("true"))
+                cArtist = true;
+           
+            
+            if(cy.equals("true"))
+                cYear = true;
+           
+            
+            if(cg.equals("true"))
+                cGenre = true;
+            
+            if(cc.equals("true"))
+                cComment = true;
+            
+            System.out.println(cAlbum);
+            System.out.println(cArtist);
+            System.out.println(cYear);
+            System.out.println(cGenre);
+            System.out.println(cComment);
+        } catch (SQLException ex) {
+            Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+        }
+            int sizea = (scrollPane.getWidth())/6;
+            
+                        if(!cAlbum){
+                            
+                             jTable.getColumnModel().getColumn(1).setMinWidth(0);
+                             jTable.getColumnModel().getColumn(1).setMaxWidth(0);
+                        }
+                        if(cAlbum){
+                            jTable.getColumnModel().getColumn(1).setMaxWidth(sizea);
+                            jTable.getColumnModel().getColumn(1).setMinWidth(sizea);
+                            
+                        }
+                        
+                        if(!cArtist){
+                            
+                             jTable.getColumnModel().getColumn(2).setMinWidth(0);
+                             jTable.getColumnModel().getColumn(2).setMaxWidth(0);
+                        }
+                        if(cArtist){
+                            jTable.getColumnModel().getColumn(2).setMaxWidth(sizea);
+                            jTable.getColumnModel().getColumn(2).setMinWidth(sizea);
+                            
+                        }
+                        
+                        if(!cYear){
+                            
+                             jTable.getColumnModel().getColumn(3).setMinWidth(0);
+                             jTable.getColumnModel().getColumn(3).setMaxWidth(0);
+                        }
+                        if(cYear){
+                            jTable.getColumnModel().getColumn(3).setMaxWidth(sizea);
+                            jTable.getColumnModel().getColumn(3).setMinWidth(sizea);
+                            
+                        }
+                        
+                        if(!cGenre){
+                            
+                             jTable.getColumnModel().getColumn(4).setMinWidth(0);
+                             jTable.getColumnModel().getColumn(4).setMaxWidth(0);
+                        }
+                        if(cGenre){
+                            jTable.getColumnModel().getColumn(4).setMaxWidth(sizea);
+                            jTable.getColumnModel().getColumn(4).setMinWidth(sizea);
+                            
+                        }
+                        
+                        if(!cComment){
+                            
+                             jTable.getColumnModel().getColumn(5).setMinWidth(0);
+                             jTable.getColumnModel().getColumn(5).setMaxWidth(0);
+                        }
+                        if(cComment){
+                            jTable.getColumnModel().getColumn(5).setMaxWidth(sizea);
+                            jTable.getColumnModel().getColumn(5).setMinWidth(sizea);
+                            
+                        }
+        
+              
+          }
+          
+          
+          public  void resetBpl()
+    {
+        /*
+        if(bplListener != null)
+        {
+            player.removeBasicPlayerListener(bplListener);
+            
+        }
+        
+
+        
+        player.addBasicPlayerListener(bplListener = new BasicPlayerListener() {
+            @Override
+            public void opened(Object stream, Map properties) {
+               System.out.println(stream);
+                //System.out.println((String)stream);
+                
+                Object g = properties.get("duration");
+                long microsec = Long.valueOf(g.toString());
+                long lenSec = Math.round(microsec / 1000000);
+                
+                System.out.println(lenSec);
+                
+                    
+            }
+
+    
+               
+
+            
+
+            public void stateUpdated(BasicPlayerEvent event) {
+            }
+
+            public void setController(BasicController controller) {
+            }
+
+           @Override
+           public void progress(int i, long l, byte[] bytes, Map properties) {
+               
+               if(properties.get("mp3.position.microseconds") != null)
+                {
+                    duration = l;
+                    Object sMicroSeconds = properties.get("mp3.position.microseconds");
+                    long microsec = Long.valueOf(sMicroSeconds.toString());
+                    long lenSec = Math.round(microsec / 1000000);
+                    
+                    Date d = new Date(lenSec * 1000L);
+                    SimpleDateFormat df = new SimpleDateFormat("HH:mm:ss"); // HH for 0-23
+                    df.setTimeZone(TimeZone.getTimeZone("GMT"));
+                    String time = df.format(d);
+                    
+                    timer1.setText(time);
+                    
+                    System.out.println(properties.toString());
+                    System.out.println(i);
+                    System.out.println(l);
+                   // System.out.println(properties.toString());
+                    
+                    int lengthSeconds = Math.round(duration / 1000000);
+                    long remsec = Math.round(lengthSeconds-lenSec);
+                    Date d2 = new Date(remsec * 1000L);
+                    SimpleDateFormat df2 = new SimpleDateFormat("HH:mm:ss"); // HH for 0-23
+                    df2.setTimeZone(TimeZone.getTimeZone("GMT"));
+                    String time2 = df2.format(d2);
+                    
+                    timer12.setText(time2);
+                    
+                }
+                
+                
+
+           }
+        }); 
+        */
+    }
+          
+          
+          
+          class Options2 implements ActionListener{
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+                    
+                    JMenuItem menuItem = (JMenuItem)e.getSource();
+                    String abc123 = menuItem.getText();
+                    
+                    
+                    try {
+            
+            
+            
+            Connection con = DatabaseConnect.getConnection();   
+            Statement st = null;
+            ResultSet rs = null;
+            st = con.createStatement();
+            String qr = "Select path from recent where name = \"" + abc123 + "\"";
+            rs = st.executeQuery(qr);
+            
+            String playto=null;
+            while(rs.next()){
+                
+                 playto = rs.getString("path");
+                System.out.println(playto);
+                 
+            }
+            
+            
+            
+                pause.setText("Pause");
+                 System.out.println(CurrentSelectedRow);
+                
+                System.out.println(CurrentSelectedRow);
+                System.out.println("Playing");
+                try {
+                    CurrentSelectedRow =jTable.getSelectedRow();
+                    url = playto;
+                    System.out.println(CurrentSelectedRow);
+                    a = new File(url).toURI().toURL();
+                    
+                } catch (MalformedURLException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+ 
+             try {
+                svst = CurrentSelectedRow; 
+                player.open(a);
+                player.play();
+                
+                
+                
+                
+                
+                System.out.println(player.getListeners());
+                
+                String sa = "Now Playing : " + jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString();
+                jLabel.setText(sa);
+                
+                Mp3File mp3file = new Mp3File(url);
+                if (mp3file.hasId3v2Tag()) {
+                       ID3v2 id3v2Tag = mp3file.getId3v2Tag();
+                       byte[] img = id3v2Tag.getAlbumImage();
+                       if (img == null) {
+                              ImageIcon icon = new ImageIcon("C:\\Users\\karth\\Documents\\NetBeansProjects\\ProjectMp30\\img\\empty.png"); 
+                                jLabel3.setSize(100,100);
+                                jLabel3.setIcon(icon);
+                        }
+                       else{
+                       BufferedImage image = ImageIO.read(new ByteArrayInputStream(img)); 
+                       jLabel3.setSize(100,100);
+                       Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
+                       ImageIcon icon = new ImageIcon(dimg);
+                       jLabel3.setIcon(icon);
+                       lmp3 = mp3file.getLengthInSeconds();
+                       System.out.println("Length of this mp3 is: " + mp3file.getLengthInSeconds() + " seconds");
+                       }
+                       
+                       if(!shuf){
+                  con=null;
+                            PreparedStatement ps=null;
+                            con=DatabaseConnect.getConnection();
+                            try {
+                                
+                                ps=con.prepareStatement ("insert into recent (name,path) values (?,?)");
+                                ps.setString(1,jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                ps.setString(2,url);
+                                ps.executeUpdate();
+                                
+                                recent.add(jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                
+                            } catch (SQLException ex) {
+                                Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                           
+                //createRecent();
+                }
+                        
+                
+                
+            }
+                
+            }   catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (IOException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (UnsupportedTagException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (InvalidDataException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+        } catch (SQLException ex) {
+            Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+        }
+          
+                }
+          }
+          
+          
+         
+          
           
           class Options1 implements ActionListener{
               
@@ -1106,6 +2061,184 @@ public class GUI {
             System.exit(0);
         }
     }
+          
+          
+          public class BasicPlayerTest implements BasicPlayerListener
+{
+  private PrintStream out = null;
+
+  /**
+   * Entry point.
+   * @param args filename to play.
+   */
+  
+
+    /**
+     * Contructor.
+     */
+  public BasicPlayerTest()
+     {
+      player.addBasicPlayerListener(this);
+      out = System.out;
+     }
+
+  public void play(String filename)
+     {
+       // Instantiate BasicPlayer.
+      BasicPlayer player = new BasicPlayer();
+      // BasicPlayer is a BasicController.
+      BasicController control = (BasicController) player;
+      // Register BasicPlayerTest to BasicPlayerListener events.
+      // It means that this object will be notified on BasicPlayer
+      // events such as : opened(...), progress(...), stateUpdated(...)
+      player.addBasicPlayerListener(this);
+
+  try
+     { 
+      // Open file, or URL or Stream (shoutcast, icecast) to play.
+      control.open(new File(filename));
+
+      // control.open(new URL("http://yourshoutcastserver.com:8000"));
+
+      // Start playback in a thread.
+      control.play();
+
+      // If you want to pause/resume/pause the played file then
+      // write a Swing player and just call control.pause(),
+      // control.resume() or control.stop(). 
+      // Use control.seek(bytesToSkip) to seek file
+      // (i.e. fast forward and rewind). seek feature will
+      // work only if underlying JavaSound SPI implements
+      // skip(...). True for MP3SPI and SUN SPI's
+      // (WAVE, AU, AIFF).
+
+      // Set Volume (0 to 1.0).
+      control.setGain(0.85);
+      // Set Pan (-1.0 to 1.0).
+      control.setPan(0.0);
+    }
+    catch (BasicPlayerException e)
+    {
+      e.printStackTrace();
+    }
+  }
+
+  /**
+   * Open callback, stream is ready to play.
+   *
+   * properties map includes audio format dependant features such as
+   * bitrate, duration, frequency, channels, number of frames, vbr flag, ... 
+   *
+   * @param stream could be File, URL or InputStream
+   * @param properties audio stream properties.
+   */
+  public void opened(Object stream, Map properties)
+  {
+    // Pay attention to properties. It's useful to get duration, 
+    // bitrate, channels, even tag such as ID3v2.
+      spl = stream.toString();
+      
+   
+    
+  }
+
+  /**
+   * Progress callback while playing.
+   * 
+   * This method is called severals time per seconds while playing.
+   * properties map includes audio format features such as
+   * instant bitrate, microseconds position, current frame number, ... 
+   * 
+   * @param bytesread from encoded stream.
+   * @param microseconds elapsed (<b>reseted after a seek !</b>).
+   * @param pcmdata PCM samples.
+   * @param properties audio stream parameters.
+  */
+  public void progress(int bytesread, long microseconds, byte[] pcmdata, Map properties)
+  {
+    // Pay attention to properties. It depends on underlying JavaSound SPI
+    // MP3SPI provides mp3.equalizer.
+    //display("progress : "+properties.toString());
+      //long value = bytesread / (byteDuration / 1000);
+      
+               
+                
+                
+                    
+                    
+                    if(properties.get("mp3.position.microseconds") != null)
+                {
+                    
+                    Object sMicroSeconds = properties.get("mp3.position.microseconds");
+                    long microsec = Long.valueOf(sMicroSeconds.toString());
+                    long lenSec = Math.round(microsec / 1000000);
+                    
+                    Date d = new Date(lenSec * 1000L);
+                    SimpleDateFormat df = new SimpleDateFormat("HH:mm:ss"); // HH for 0-23
+                    df.setTimeZone(TimeZone.getTimeZone("GMT"));
+                    String time = df.format(d);
+                    
+                    timer1.setText(time);
+                    //jbar.setMin(0);
+                    
+                            
+                    jbar.setValue((int)lenSec);
+                    
+                    //System.out.println(properties.toString());
+                    
+                   // System.out.println(properties.toString());
+                    jbar.setMinimum(0);
+                    jbar.setMaximum((int)lmp3);
+                    long remsec = Math.round(lmp3-lenSec);
+                    Date d2 = new Date(remsec * 1000L);
+                    SimpleDateFormat df2 = new SimpleDateFormat("HH:mm:ss"); // HH for 0-23
+                    df2.setTimeZone(TimeZone.getTimeZone("GMT"));
+                    String time2 = df2.format(d2);
+                    
+                    
+                    
+                    timer12.setText(time2);
+                    
+                }
+                   
+                
+  }
+
+  /**
+   * Notification callback for basicplayer events such as opened, eom ...
+   * 
+   * @param event
+   */
+  public void stateUpdated(BasicPlayerEvent event)
+  {
+    // Notification of BasicPlayer states (opened, playing, end of media, ...)
+    display("stateUpdated : "+event.toString());
+    
+    if(event.toString().equals("STOPPED:-1")){
+        jbar.setValue(0);
+        timer1.setText("00:00:00");
+        timer12.setText("00:00:00");
+        
+    }
+    
+  }
+
+  /**
+   * A handle to the BasicPlayer, plugins may control the player through
+   * the controller (play, stop, ...)
+   * @param controller : a handle to the player
+   */ 
+  public void setController(BasicController controller)
+  {
+    display("setController : "+controller);
+  }
+
+  public void display(String msg)
+  {
+    if (out != null) out.println(msg);
+  }
+}
+          
 
     class ButtonListener implements ActionListener {
 
@@ -1141,9 +2274,15 @@ public class GUI {
                 }
  
              try {
-                 
+                svst = CurrentSelectedRow; 
                 player.open(a);
                 player.play();
+                
+                
+                
+                
+                
+                System.out.println(player.getListeners());
                 
                 String sa = "Now Playing : " + jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString();
                 jLabel.setText(sa);
@@ -1163,7 +2302,29 @@ public class GUI {
                        Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
                        ImageIcon icon = new ImageIcon(dimg);
                        jLabel3.setIcon(icon);
+                       lmp3 = mp3file.getLengthInSeconds();
+                       System.out.println("Length of this mp3 is: " + mp3file.getLengthInSeconds() + " seconds");
                        }
+                       
+                       if(!shuf){
+                 Connection con=null;
+                            PreparedStatement ps=null;
+                            con=DatabaseConnect.getConnection();
+                            try {
+                                
+                                ps=con.prepareStatement ("insert into recent (name,path) values (?,?)");
+                                ps.setString(1,jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                ps.setString(2,url);
+                                ps.executeUpdate();
+                                
+                                recent.add(jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                
+                            } catch (SQLException ex) {
+                                Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                           
+                //createRecent();
+                }
                         
                 
                 
@@ -1226,6 +2387,7 @@ public class GUI {
             
              if("Stop".equals(e.getActionCommand())){
                  pause.setText("Pause");
+                 jbar.setValue(0);
                  //url = jTable.getModel().getValueAt(CurrentSelectedRow, 4).toString();
                 System.out.println(CurrentSelectedRow);
                 /* try {
@@ -1237,6 +2399,7 @@ public class GUI {
                // player.open(a);
                 player.stop();
                 jLabel.setText("No Song Playing");
+                timer1.setText("00:00:00");
                 ImageIcon icon = new ImageIcon("C:\\Users\\karth\\Documents\\NetBeansProjects\\ProjectMp30\\img\\empty.png"); 
                 jLabel3.setSize(100,100);
                 jLabel3.setIcon(icon);
@@ -1254,7 +2417,72 @@ public class GUI {
              if("Next".equals(e.getActionCommand())){
                  pause.setText("Pause");
                 System.out.println("Next");
-                CurrentSelectedRow = CurrentSelectedRow+1;
+                
+                if(shuf){
+                    if(rep){
+                        CurrentSelectedRow = CurrentSelectedRow;
+                if(CurrentSelectedRow==jTable.getRowCount()){
+                    CurrentSelectedRow = 0;
+                    
+                }
+                
+                jTable.changeSelection(CurrentSelectedRow,0,false,false);
+                url = jTable.getModel().getValueAt(CurrentSelectedRow, 6).toString();
+                System.out.println(CurrentSelectedRow);
+                try {
+                    a = new File(url).toURI().toURL();
+                } catch (MalformedURLException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                
+                
+                try {
+                player.open(a);
+                player.play();
+                String sa = "Now Playing : " + jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString();
+                    jLabel.setText(sa);
+                    
+                    Mp3File mp3file = new Mp3File(url);
+                if (mp3file.hasId3v2Tag()) {
+                       ID3v2 id3v2Tag = mp3file.getId3v2Tag();
+                       byte[] img = id3v2Tag.getAlbumImage();
+                       if (img == null) {
+                              ImageIcon icon = new ImageIcon("C:\\Users\\karth\\Documents\\NetBeansProjects\\ProjectMp30\\img\\empty.png"); 
+                                jLabel3.setSize(100,100);
+                                jLabel3.setIcon(icon);
+                        }
+                       else{
+                       BufferedImage image = ImageIO.read(new ByteArrayInputStream(img)); 
+                       jLabel3.setSize(100,100);
+                       Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
+                       ImageIcon icon = new ImageIcon(dimg);
+                       jLabel3.setIcon(icon);
+                       
+                       }
+                       lmp3 = mp3file.getLengthInSeconds();
+                        
+                
+                
+            }
+                System.out.println("Next playing");
+            }   catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {   
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (IOException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (UnsupportedTagException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (InvalidDataException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } 
+                
+                
+                    }
+                    
+                    else 
+                    {
+                        Random random = new Random();
+                      int randomInteger = random.nextInt(jTable.getRowCount()-1); 
+                      CurrentSelectedRow = randomInteger;
                 if(CurrentSelectedRow==jTable.getRowCount()){
                     CurrentSelectedRow = 0;
                     
@@ -1292,6 +2520,7 @@ public class GUI {
                        ImageIcon icon = new ImageIcon(dimg);
                        jLabel3.setIcon(icon);
                        }
+                       lmp3 = mp3file.getLengthInSeconds();
                         
                 
                 
@@ -1305,13 +2534,148 @@ public class GUI {
                     Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
                 } catch (InvalidDataException ex) {
                     Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
-                }   
+                } 
+                    }
+                }
+                else if(rep){
+                    CurrentSelectedRow = CurrentSelectedRow;
+                if(CurrentSelectedRow==jTable.getRowCount()){
+                    CurrentSelectedRow = 0;
+                    
+                }
+                
+                jTable.changeSelection(CurrentSelectedRow,0,false,false);
+                url = jTable.getModel().getValueAt(CurrentSelectedRow, 6).toString();
+                System.out.println(CurrentSelectedRow);
+                try {
+                    a = new File(url).toURI().toURL();
+                } catch (MalformedURLException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                
+                
+                try {
+                player.open(a);
+                player.play();
+                String sa = "Now Playing : " + jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString();
+                    jLabel.setText(sa);
+                    
+                    Mp3File mp3file = new Mp3File(url);
+                if (mp3file.hasId3v2Tag()) {
+                       ID3v2 id3v2Tag = mp3file.getId3v2Tag();
+                       byte[] img = id3v2Tag.getAlbumImage();
+                       if (img == null) {
+                              ImageIcon icon = new ImageIcon("C:\\Users\\karth\\Documents\\NetBeansProjects\\ProjectMp30\\img\\empty.png"); 
+                                jLabel3.setSize(100,100);
+                                jLabel3.setIcon(icon);
+                        }
+                       else{
+                       BufferedImage image = ImageIO.read(new ByteArrayInputStream(img)); 
+                       jLabel3.setSize(100,100);
+                       Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
+                       ImageIcon icon = new ImageIcon(dimg);
+                       jLabel3.setIcon(icon);
+                       }
+                       lmp3 = mp3file.getLengthInSeconds();
+                        
+                
+                
+            }
+                System.out.println("Next playing");
+            }   catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {   
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (IOException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (UnsupportedTagException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (InvalidDataException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } 
+                }
+                
+                else{
+                   CurrentSelectedRow = CurrentSelectedRow+1;
+                if(CurrentSelectedRow==jTable.getRowCount()){
+                    CurrentSelectedRow = 0;
+                    
+                }
+                
+                jTable.changeSelection(CurrentSelectedRow,0,false,false);
+                url = jTable.getModel().getValueAt(CurrentSelectedRow, 6).toString();
+                System.out.println(CurrentSelectedRow);
+                try {
+                    a = new File(url).toURI().toURL();
+                } catch (MalformedURLException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                
+                
+                try {
+                player.open(a);
+                player.play();
+                String sa = "Now Playing : " + jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString();
+                    jLabel.setText(sa);
+                    
+                    Mp3File mp3file = new Mp3File(url);
+                if (mp3file.hasId3v2Tag()) {
+                       ID3v2 id3v2Tag = mp3file.getId3v2Tag();
+                       byte[] img = id3v2Tag.getAlbumImage();
+                       if (img == null) {
+                              ImageIcon icon = new ImageIcon("C:\\Users\\karth\\Documents\\NetBeansProjects\\ProjectMp30\\img\\empty.png"); 
+                                jLabel3.setSize(100,100);
+                                jLabel3.setIcon(icon);
+                        }
+                       else{
+                       BufferedImage image = ImageIO.read(new ByteArrayInputStream(img)); 
+                       jLabel3.setSize(100,100);
+                       Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
+                       ImageIcon icon = new ImageIcon(dimg);
+                       jLabel3.setIcon(icon);
+                       }
+                       lmp3 = mp3file.getLengthInSeconds();
+                        if(!shuf){
+                 Connection con=null;
+                            PreparedStatement ps=null;
+                            con=DatabaseConnect.getConnection();
+                            try {
+                                
+                                ps=con.prepareStatement ("insert into recent (name,path) values (?,?)");
+                                ps.setString(1,jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                ps.setString(2,url);
+                                ps.executeUpdate();
+                                
+                                recent.add(jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                
+                            } catch (SQLException ex) {
+                                Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                           
+                //createRecent();
+                }
+                
+                
+            }
+                System.out.println("Next playing");
+            }   catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {   
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (IOException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (UnsupportedTagException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (InvalidDataException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }  
+                }
+                  
             }
              
              if("Previous".equals(e.getActionCommand())){
                  pause.setText("Pause");
                 System.out.println("Previous entered");
-                CurrentSelectedRow = CurrentSelectedRow-1;
+                
+                if(shuf){
+                    if(rep){
+                        CurrentSelectedRow = CurrentSelectedRow;
                 if(CurrentSelectedRow== -1){
                     CurrentSelectedRow = jTable.getRowCount() - 1;
                     
@@ -1346,7 +2710,7 @@ public class GUI {
                        ImageIcon icon = new ImageIcon(dimg);
                        jLabel3.setIcon(icon);
                        }
-                        
+                        lmp3 = mp3file.getLengthInSeconds();
                 
                 
             }
@@ -1365,6 +2729,203 @@ public class GUI {
                     Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
                 }
                 System.out.println("Previous playing");
+                    }
+                    
+                    else
+                    {   
+                      Random random = new Random();
+                      int randomInteger = random.nextInt(jTable.getRowCount()-1); 
+                      CurrentSelectedRow = randomInteger;
+                if(CurrentSelectedRow== -1){
+                    CurrentSelectedRow = jTable.getRowCount() - 1;
+                    
+                }
+                jTable.changeSelection(CurrentSelectedRow,0,false,false);
+                url = jTable.getModel().getValueAt(CurrentSelectedRow, 6).toString();
+                System.out.println(CurrentSelectedRow);
+                try {
+                    a = new File(url).toURI().toURL();
+                } catch (MalformedURLException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                
+                
+                try {
+                    player.open(a);
+                    String sa = "Now Playing : " + jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString();
+                    jLabel.setText(sa);
+                    Mp3File mp3file = new Mp3File(url);
+                if (mp3file.hasId3v2Tag()) {
+                       ID3v2 id3v2Tag = mp3file.getId3v2Tag();
+                       byte[] img = id3v2Tag.getAlbumImage();
+                       if (img == null) {
+                             ImageIcon icon = new ImageIcon("C:\\Users\\karth\\Documents\\NetBeansProjects\\ProjectMp30\\img\\empty.png"); 
+                                jLabel3.setSize(100,100);
+                                jLabel3.setIcon(icon);
+                        }
+                       else{
+                       BufferedImage image = ImageIO.read(new ByteArrayInputStream(img)); 
+                       jLabel3.setSize(100,100);
+                       Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
+                       ImageIcon icon = new ImageIcon(dimg);
+                       jLabel3.setIcon(icon);
+                       }
+                        lmp3 = mp3file.getLengthInSeconds();
+                
+                
+            }
+                } catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (IOException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (UnsupportedTagException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (InvalidDataException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                try {
+                    player.play();
+                } catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                System.out.println("Previous playing");
+                    }
+                    
+                }
+                
+                else if(rep){
+                    CurrentSelectedRow = CurrentSelectedRow;
+                if(CurrentSelectedRow== -1){
+                    CurrentSelectedRow = jTable.getRowCount() - 1;
+                    
+                }
+                jTable.changeSelection(CurrentSelectedRow,0,false,false);
+                url = jTable.getModel().getValueAt(CurrentSelectedRow, 6).toString();
+                System.out.println(CurrentSelectedRow);
+                try {
+                    a = new File(url).toURI().toURL();
+                } catch (MalformedURLException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                
+                
+                try {
+                    player.open(a);
+                    String sa = "Now Playing : " + jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString();
+                    jLabel.setText(sa);
+                    Mp3File mp3file = new Mp3File(url);
+                if (mp3file.hasId3v2Tag()) {
+                       ID3v2 id3v2Tag = mp3file.getId3v2Tag();
+                       byte[] img = id3v2Tag.getAlbumImage();
+                       if (img == null) {
+                             ImageIcon icon = new ImageIcon("C:\\Users\\karth\\Documents\\NetBeansProjects\\ProjectMp30\\img\\empty.png"); 
+                                jLabel3.setSize(100,100);
+                                jLabel3.setIcon(icon);
+                        }
+                       else{
+                       BufferedImage image = ImageIO.read(new ByteArrayInputStream(img)); 
+                       jLabel3.setSize(100,100);
+                       Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
+                       ImageIcon icon = new ImageIcon(dimg);
+                       jLabel3.setIcon(icon);
+                       }
+                        lmp3 = mp3file.getLengthInSeconds();
+                
+                
+            }
+                } catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (IOException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (UnsupportedTagException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (InvalidDataException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                try {
+                    player.play();
+                } catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                System.out.println("Previous playing");
+                }
+                
+                else
+                {
+                   CurrentSelectedRow = CurrentSelectedRow-1;
+                if(CurrentSelectedRow== -1){
+                    CurrentSelectedRow = jTable.getRowCount() - 1;
+                    
+                }
+                jTable.changeSelection(CurrentSelectedRow,0,false,false);
+                url = jTable.getModel().getValueAt(CurrentSelectedRow, 6).toString();
+                System.out.println(CurrentSelectedRow);
+                try {
+                    a = new File(url).toURI().toURL();
+                } catch (MalformedURLException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                
+                
+                try {
+                    player.open(a);
+                    String sa = "Now Playing : " + jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString();
+                    jLabel.setText(sa);
+                    Mp3File mp3file = new Mp3File(url);
+                if (mp3file.hasId3v2Tag()) {
+                       ID3v2 id3v2Tag = mp3file.getId3v2Tag();
+                       byte[] img = id3v2Tag.getAlbumImage();
+                       if (img == null) {
+                             ImageIcon icon = new ImageIcon("C:\\Users\\karth\\Documents\\NetBeansProjects\\ProjectMp30\\img\\empty.png"); 
+                                jLabel3.setSize(100,100);
+                                jLabel3.setIcon(icon);
+                        }
+                       else{
+                       BufferedImage image = ImageIO.read(new ByteArrayInputStream(img)); 
+                       jLabel3.setSize(100,100);
+                       Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
+                       ImageIcon icon = new ImageIcon(dimg);
+                       jLabel3.setIcon(icon);
+                       }
+                        lmp3 = mp3file.getLengthInSeconds();
+                if(!shuf){
+                 Connection con=null;
+                            PreparedStatement ps=null;
+                            con=DatabaseConnect.getConnection();
+                            try {
+                                
+                                ps=con.prepareStatement ("insert into recent (name,path) values (?,?)");
+                                ps.setString(1,jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                ps.setString(2,url);
+                                ps.executeUpdate();
+                                
+                                recent.add(jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                
+                            } catch (SQLException ex) {
+                                Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                           
+                //createRecent();
+                }
+                
+            }
+                } catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (IOException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (UnsupportedTagException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                } catch (InvalidDataException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                try {
+                    player.play();
+                } catch (javazoom.jlgui.basicplayer.BasicPlayerException ex) {
+                    Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                System.out.println("Previous playing"); 
+                }
+                
             }
              
 
@@ -1664,6 +3225,9 @@ public class GUI {
           public void mouseReleased(MouseEvent me)
             {
                 
+                
+         
+                
                 /*if(SwingUtilities.isLeftMouseButton(me) == true)
                     {
                         CurrentSelectedRow =jTable2.getSelectedRow();
@@ -1761,6 +3325,7 @@ public class GUI {
         };
         
         scrollPane = new JScrollPane(jTable2);
+        
         //assign the listener
         jTable2.addMouseListener(mouseListener);
         
@@ -1894,7 +3459,7 @@ public class GUI {
             new Object [][] {
 
             },
-            new String [] {
+            new Object [] {
                 "Title", "Album", "Artist", "Year", "Genre", "Comment", "Path"
             }
         ));
@@ -1928,7 +3493,7 @@ public class GUI {
             new Object [][] {
 
             },
-            new String [] {
+            new Object [] {
                 "Title", "Album", "Artist", "Year", "Genre", "Comment", "Path"
             }
         ));
@@ -2143,6 +3708,7 @@ public class GUI {
                 }
  
              try {
+                 playing = CurrentSelectedRow;
                 player.open(a);
                 player.play();
                 
@@ -2164,6 +3730,7 @@ public class GUI {
                        Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
                        ImageIcon icon = new ImageIcon(dimg);
                        jLabel3.setIcon(icon);
+                       lmp3 = mp3file.getLengthInSeconds();
                        }
                         
                 
@@ -2227,6 +3794,7 @@ public class GUI {
             
              if("Stop".equals(e.getActionCommand())){
                  pause.setText("Pause");
+                 jbar.setValue(0);
                  //url = jTable2.getModel().getValueAt(CurrentSelectedRow, 4).toString();
                 System.out.println(CurrentSelectedRow);
                 /* try {
@@ -2292,8 +3860,27 @@ public class GUI {
                        Image dimg = image.getScaledInstance(jLabel3.getWidth(), jLabel3.getHeight(),Image.SCALE_SMOOTH);
                        ImageIcon icon = new ImageIcon(dimg);
                        jLabel3.setIcon(icon);
+                       lmp3 = mp3file.getLengthInSeconds();
                        }
-                        
+                        if(!shuf){
+                 Connection con=null;
+                            PreparedStatement ps=null;
+                            con=DatabaseConnect.getConnection();
+                            try {
+                                
+                                ps=con.prepareStatement ("insert into recent (name,path) values (?,?)");
+                                ps.setString(1,jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                ps.setString(2,url);
+                                ps.executeUpdate();
+                                
+                                recent.add(jTable.getModel().getValueAt(CurrentSelectedRow, 0).toString());
+                                
+                            } catch (SQLException ex) {
+                                Logger.getLogger(GUI.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                           
+                //createRecent();
+                }
                 
                 
             }
@@ -2347,7 +3934,7 @@ public class GUI {
                        ImageIcon icon = new ImageIcon(dimg);
                        jLabel3.setIcon(icon);
                        }
-                        
+                        lmp3 = mp3file.getLengthInSeconds();
                 
                 
             }
@@ -2385,7 +3972,7 @@ public class GUI {
             new Object [][] {
 
             },
-            new String [] {
+            new Object [] {
                 "Title", "Album", "Artist", "Year", "Genre", "Comment", "Path"
             }
         ));
